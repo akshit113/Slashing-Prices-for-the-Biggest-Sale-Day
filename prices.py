@@ -2,7 +2,9 @@ from pprint import pprint
 
 import numpy as np
 from keras import Sequential
-from keras.layers import LSTM, Dense
+from keras.layers import Dense
+from keras.losses import MeanSquaredLogarithmicError
+from keras.optimizers import SGD
 from pandas import get_dummies, concat, read_csv, DataFrame, set_option
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -100,16 +102,34 @@ def split_dataset(df, test_size, seed):
     return x_train, x_test, y_train, y_test
 
 
-def create_baseline_model(X_train):
-    model = Sequential()
-    model.add(LSTM(units=32, activation='relu', return_sequences=True, input_shape=(X_train.shape[1], 5)))
-    model.add(LSTM(units=64, activation='relu', return_sequences=True))
-    model.add(LSTM(units=84, activation='relu', return_sequences=True))
-    model.add(LSTM(units=124, activation='relu'))
-    model.add(Dense(units=1, activation='relu'))
-    print(model.summary())
-    model.compile(loss='mean_squared_error', optimizer='adam')
-    return model
+def get_model(input_size, output_size, magic='tanh'):
+    """This function creates a baseline feedforward neural network with of given input size and output size
+        using magic activation function.
+    :param input_size: number of columns in x_train
+    :param output_size: no of columns in one hpt
+    :param magic: activation function
+    :return:Sequential model
+    """
+    mlmodel = Sequential()
+    mlmodel.add(Dense(18, input_dim=input_size, activation=magic))
+    # kernel_regularizer=l1_l2(l1=1e-5, l2=1e-4), bias_regularizer=l2(1e-4),
+    # activity_regularizer=l1(1e-5)))
+    # mlmodel.add(LeakyReLU(alpha=0.1))
+    mlmodel.add(Dense(128, activation=magic))
+    mlmodel.add(Dense(128, activation=magic))
+    mlmodel.add(Dense(256, activation=magic))
+    mlmodel.add(Dense(256, activation=magic))
+    mlmodel.add(Dense(512, activation=magic))
+    mlmodel.add(Dense(512, activation=magic))
+    mlmodel.add(Dense(1024, activation=magic))
+    mlmodel.add(Dense(output_size, activation='softmax'))
+
+    # Setting optimizer
+    # mlmodel.compile(loss="binary_crossentropy", optimizer='adam', metrics=['accuracy'])
+    opt = SGD(lr=0.001)
+    msle = MeanSquaredLogarithmicError()
+    mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
+    return mlmodel
 
 
 def fit_and_evaluate(model, x_train, y_train, batch_size, epochs):
@@ -140,20 +160,23 @@ def main():
     X_train, Y_train = np.array(x_train), np.array(y_train)
     print(X_train.shape)
     print(Y_train.shape)
+    regressor = get_model(44, 1, magic='selu')
+    print(regressor.summary())
+    regressor.fit(X_train, Y_train, batch_size=120, epochs=64, verbose=1)
 
-    model = create_baseline_model(X_train)
-    print(model.summary())
-    model.fit(X_train, Y_train, batch_size=32, epochs=10, verbose=1)
-    past_60_days = orig_training_data.tail(60)
-    df = orig_testing_data.append(past_60_days, ignore_index=True)
-    df = normalize_columns(df, scaler)
-    X_test, Y_test = get_frames(df, 60)
-    X_test, Y_test = np.array(X_test), np.array(Y_test)
-    Y_pred = model.predict(X_test)
 
-    scale = scaler.scale_[0]
-    Y_pred *= 1 / scale
-    Y_test *= 1 / scale
+
+    
+    # past_60_days = orig_training_data.tail(60)
+    # df = orig_testing_data.append(past_60_days, ignore_index=True)
+    # df = normalize_columns(df, scaler)
+    # X_test, Y_test = get_frames(df, 60)
+    # X_test, Y_test = np.array(X_test), np.array(Y_test)
+    # Y_pred = model.predict(X_test)
+    #
+    # scale = scaler.scale_[0]
+    # Y_pred *= 1 / scale
+    # Y_test *= 1 / scale
 
 
 if __name__ == '__main__':
