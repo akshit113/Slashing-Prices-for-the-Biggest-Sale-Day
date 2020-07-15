@@ -7,13 +7,16 @@ import numpy as np
 from keras import Sequential
 from keras.layers import Dense
 from keras.losses import MeanSquaredLogarithmicError
-from keras.optimizers import SGD
 from pandas import get_dummies, concat, read_csv, DataFrame, set_option
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 
 def get_train_data(fpath):
+    """This function import traning data and reformats the columns in desired format
+    :param fpath: path of the training dataset
+    :return: training dataframe with Item ID
+    """
     set_pandas()
     df = read_csv(fpath)
     train_df = df.iloc[:, [1, 2, 3, 4, 5, 6, 8, 7]]
@@ -37,6 +40,7 @@ def one_hot_encode(df, colnames):
 
 
 def normalize_columns(df, colnames, scaler):
+    """Performs Normalization using MinMaxScaler class in Sckikit-learn"""
     for col in colnames:
         # Create x, where x the 'scores' column's values as floats
         x = df.loc[:, [col]]
@@ -55,7 +59,7 @@ def check_unique_value(df, colnames):
     dicitonary
     :param df:
     :param colnames:
-    :return: a dictionary
+    :return: pretty print a dictionary
     """
     mydict = {}
     for col in colnames:
@@ -66,18 +70,16 @@ def check_unique_value(df, colnames):
 
 
 def prepare_data(df):
+    """Prepares the Input data for applying machine learning algorithm
+    :param df:
+    :return: df
+    """
     df = df.drop(['Market_Category', 'Date'], axis=1)
 
     # normalize the columns
     scaler = MinMaxScaler()
     df = normalize_columns(df, ['Demand', 'High_Cap_Price', 'Grade'], scaler)
-    print(df.shape)
-    # one hot encoding
-    # encoder = OneHotEncoder(categories="auto")
-    # X_train_encoded = encoder.fit_transform("X_train")
-    # X_test_encoded = encoder.transform("X_test")
     df = one_hot_encode(df, ['State_of_Country', 'Product_Category'])
-    print(df.shape)
     return df
 
 
@@ -129,8 +131,6 @@ def get_model(input_size, output_size, magic='relu'):
     mlmodel.add(Dense(output_size))
 
     # Setting optimizer
-    # mlmodel.compile(loss="binary_crossentropy", optimizer='adam', metrics=['accuracy'])
-    opt = SGD(lr=0.001)
     msle = MeanSquaredLogarithmicError()
     # mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
     mlmodel.compile(optimizer='rmsprop', loss='mean_squared_error', metrics=['mae'])
@@ -164,6 +164,10 @@ def fit_and_evaluate(model, x_train, y_train, batch_size, epochs, x_test, y_test
 
 
 def plt_plot_mse(history):
+    """Plots model mean sqared error for training and test data using matplotlib pockage
+    :param history: model fit history
+    :return: displays the plot
+    """
     print(history.history.keys)
     losses = ['mean_squared_error', 'val_mean_squared_error']
     for loss in losses:
@@ -178,6 +182,10 @@ def plt_plot_mse(history):
 
 
 def get_test_data(fpath):
+    """This function imports test data and reformats the columns in desired format
+    :param fpath: path of the training dataset
+    :return: training dataframe with Item ID
+    """
     df = read_csv(fpath)
     test_df = df.iloc[:, [1, 2, 3, 4, 5, 6, 7]]
     test_ids = df.iloc[:, [0]]
@@ -187,6 +195,10 @@ def get_test_data(fpath):
 
 
 def plt_plot_losses(history):
+    """Plots model loss for training and test data using matplotlib pockage
+    :param history: model fit history
+    :return: displays the plot
+    """
     losses = ['loss', 'val_loss']
     for loss in losses:
         print(loss)
@@ -200,6 +212,12 @@ def plt_plot_losses(history):
 
 
 def find_missing_cols_after_one_hot_encoding(train_df, test_df, target_col):
+    """Finds missing columns between training and test data after performing one hot encoding
+    :param train_df: Training dataframe
+    :param test_df: Test Dataframe
+    :param target_col:Name of Targwt column
+    :return:tuple of list of column names
+    """
     traincols = (list(train_df.columns))
     testcols = list(test_df.columns)
     cols_not_in_train = []
@@ -215,6 +233,14 @@ def find_missing_cols_after_one_hot_encoding(train_df, test_df, target_col):
 
 
 def add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df, target_col):
+    """adds missing columns in training and test dataset
+    :param cols_not_in_train:
+    :param train_df:
+    :param cols_not_in_test:
+    :param test_df:
+    :param target_col:
+    :return:
+    """
     if len(cols_not_in_train) != 0:
         for col in cols_not_in_train:
             train_df[col] = 0
@@ -234,6 +260,13 @@ def add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df, tar
 
 
 def write_results(preds, val_mae, fpath):
+    """Writes the model predictions into a .csv file in a suitable format
+    :param preds: np array of model preditcions
+    :param val_mae: validation mean absolute error
+    :param fpath: location of the test file
+    :return:
+    """
+
     test_df = read_csv(fpath)
     pred_df = DataFrame(preds)
     pred_df.columns = ['Low_Cap_Price']
