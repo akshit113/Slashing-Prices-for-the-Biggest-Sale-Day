@@ -1,5 +1,8 @@
+import os
+from datetime import datetime
 from pprint import pprint
 
+import matplotlib.pyplot as plt
 import numpy as np
 from keras import Sequential
 from keras.layers import Dense
@@ -67,10 +70,13 @@ def prepare_data(df):
 
     # normalize the columns
     scaler = MinMaxScaler()
-    df = normalize_columns(df, ['Demand', 'Low_Cap_Price', 'High_Cap_Price'], scaler)
+    df = normalize_columns(df, ['Demand', 'High_Cap_Price', 'Grade'], scaler)
     print(df.shape)
     # one hot encoding
-    df = one_hot_encode(df, ['State_of_Country', 'Product_Category', 'Grade'])
+    # encoder = OneHotEncoder(categories="auto")
+    # X_train_encoded = encoder.fit_transform("X_train")
+    # X_test_encoded = encoder.transform("X_test")
+    df = one_hot_encode(df, ['State_of_Country', 'Product_Category'])
     print(df.shape)
     return df
 
@@ -102,7 +108,7 @@ def split_dataset(df, test_size, seed):
     return x_train, x_test, y_train, y_test
 
 
-def get_model(input_size, output_size, magic='tanh'):
+def get_model(input_size, output_size, magic='relu'):
     """This function creates a baseline feedforward neural network with of given input size and output size
         using magic activation function.
     :param input_size: number of columns in x_train
@@ -112,8 +118,6 @@ def get_model(input_size, output_size, magic='tanh'):
     """
     mlmodel = Sequential()
     mlmodel.add(Dense(18, input_dim=input_size, activation=magic))
-    # kernel_regularizer=l1_l2(l1=1e-5, l2=1e-4), bias_regularizer=l2(1e-4),
-    # activity_regularizer=l1(1e-5)))
     # mlmodel.add(LeakyReLU(alpha=0.1))
     mlmodel.add(Dense(128, activation=magic))
     mlmodel.add(Dense(128, activation=magic))
@@ -122,17 +126,18 @@ def get_model(input_size, output_size, magic='tanh'):
     mlmodel.add(Dense(512, activation=magic))
     mlmodel.add(Dense(512, activation=magic))
     mlmodel.add(Dense(1024, activation=magic))
-    mlmodel.add(Dense(output_size, activation='softmax'))
+    mlmodel.add(Dense(output_size))
 
     # Setting optimizer
     # mlmodel.compile(loss="binary_crossentropy", optimizer='adam', metrics=['accuracy'])
     opt = SGD(lr=0.001)
     msle = MeanSquaredLogarithmicError()
-    mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
+    # mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
+    mlmodel.compile(optimizer='rmsprop', loss='mean_squared_error', metrics=['mae'])
     return mlmodel
 
 
-def fit_and_evaluate(model, x_train, y_train, batch_size, epochs):
+def fit_and_evaluate(model, x_train, y_train, batch_size, epochs, x_test, y_test):
     """fits the model created in the create_baseline_model function on x_train, y_train and evaluates the model
     performance on x_test and y_test using the batch size and epochs parameters
     :param model: Sequential model
@@ -144,39 +149,116 @@ def fit_and_evaluate(model, x_train, y_train, batch_size, epochs):
     :param epochs: number of times the entire dataset is passed through the network
     :return: tuple of validation_accuracy and validation_loss
     """
+    now_time = datetime.now()
+    history = model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, validation_data=(x_test, y_test),
+                        verbose=1)
 
-    model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
-    print('model fits the input')
+    # summarize history for accuracy
+    # plt.plot(history.history['accuracy'])
+    # plt.plot(history.history['val_accuracy'])
+    finish_time = datetime.now()
+    duration = finish_time - now_time
+    minutes, seconds = divmod(duration.seconds, 60)
+    print(f'Total training time: {minutes}:{seconds}')
+    return history
+
+
+def plt_plot_mse(history):
+    print(history.history.keys)
+    losses = ['mean_squared_error', 'val_mean_squared_error']
+    for loss in losses:
+        print(loss)
+        plt.plot(history.history[loss])
+        plt.title('Mean Squared Error Plot')
+        plt.ylabel('MSE')
+        plt.xlabel('Epoch')
+        plt.legend(losses, loc='best', numpoints=1, fancybox=True)
+    plt.show()
+    return
+
+
+def get_test_data(fpath):
+    df = read_csv(fpath)
+    test_df = df.iloc[:, [1, 2, 3, 4, 5, 6, 7]]
+    test_ids = df.iloc[:, [0]]
+    print(test_df.shape)
+    print(test_df.tail(10))
+    return test_df, test_ids
+
+
+def plt_plot_losses(history):
+    losses = ['loss', 'val_loss']
+    for loss in losses:
+        print(loss)
+        plt.plot(history.history[loss])
+        plt.title('Model Loss')
+        plt.ylabel('Loss')
+        plt.xlabel('Epoch')
+        plt.legend(losses, loc='best', numpoints=1, fancybox=True)
+    plt.show()
+    return
+
+
+def find_missing_cols_after_one_hot_encoding(train_df, test_df, target_col):
+    traincols = (list(train_df.columns))
+    testcols = list(test_df.columns)
+    cols_not_in_train = []
+    for col in testcols:
+        if col not in traincols and col != target_col:
+            cols_not_in_train.append(col)
+    cols_not_in_test = []
+    for col in traincols:
+        if col not in testcols and col != target_col:
+            # print(col)
+            cols_not_in_test.append(col)
+    return cols_not_in_train, cols_not_in_test
+
+
+def add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df, target_col):
+    if len(cols_not_in_train) != 0:
+        for col in cols_not_in_train:
+            train_df[col] = 0
+        sorted_cols = (sorted(train_df.columns))
+        train_df = train_df.loc[:, sorted_cols]
+        sorted_cols = list(train_df)
+        sorted_cols.insert(len(sorted_cols), sorted_cols.pop(sorted_cols.index(target_col)))
+        train_df = train_df.ix[:, sorted_cols]
+
+    if len(cols_not_in_test) != 0:
+        for col in cols_not_in_test:
+            test_df[col] = 0
+        sorted_cols = (sorted(test_df.columns))
+        test_df = test_df.loc[:, sorted_cols]
+
+    return train_df, test_df
 
 
 def main():
     print('get data')
-    test_file = r'C:\Users\akshitagarwal\Desktop\Keras\datasets\prices\Train.csv'
-    train_df, train_ids = get_train_data(test_file)
+    base_path = r'C:\Users\akshitagarwal\Desktop\Keras\datasets\prices'
+    train_df, train_ids = get_train_data(os.path.join(base_path, 'Train.csv'))
+    test_df, test_ids = get_test_data(os.path.join(base_path, 'Test.csv'))
+    test_df = prepare_data(test_df)
     check_unique_value(train_df, ['State_of_Country', 'Market_Category', 'Product_Category', 'Grade'])
     train_df = prepare_data(train_df)
-    print('splitting')
-    x_train, x_test, y_train, y_test = split_dataset(train_df, test_size=0.2, seed=42)
+    cols_not_in_train, cols_not_in_test = find_missing_cols_after_one_hot_encoding(train_df, test_df,
+                                                                                   target_col='Low_Cap_Price')
+    train_df, test_df = add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df,
+                                         target_col='Low_Cap_Price')
+    x_train, x_test, y_train, y_test = split_dataset(train_df, test_size=0.20, seed=42)
     X_train, Y_train = np.array(x_train), np.array(y_train)
     print(X_train.shape)
     print(Y_train.shape)
-    regressor = get_model(44, 1, magic='selu')
+    regressor = get_model(44, 1, magic='relu')
     print(regressor.summary())
-    regressor.fit(X_train, Y_train, batch_size=120, epochs=64, verbose=1)
+    history = fit_and_evaluate(regressor, x_train, y_train, 25, 64, x_test, y_test)
+    real_test_data = np.array(test_df)
 
+    # plt_plot_losses(history)
+    # plt_plot_mse(history)
 
-
-    
-    # past_60_days = orig_training_data.tail(60)
-    # df = orig_testing_data.append(past_60_days, ignore_index=True)
-    # df = normalize_columns(df, scaler)
-    # X_test, Y_test = get_frames(df, 60)
-    # X_test, Y_test = np.array(X_test), np.array(Y_test)
-    # Y_pred = model.predict(X_test)
-    #
-    # scale = scaler.scale_[0]
-    # Y_pred *= 1 / scale
-    # Y_test *= 1 / scale
+    predictions = regressor.predict(real_test_data)
+    print('done')
 
 
 if __name__ == '__main__':
