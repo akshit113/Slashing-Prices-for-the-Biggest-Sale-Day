@@ -233,6 +233,18 @@ def add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df, tar
     return train_df, test_df
 
 
+def write_results(preds, val_mae, fpath):
+    test_df = read_csv(fpath)
+    pred_df = DataFrame(preds)
+    pred_df.columns = ['Low_Cap_Price']
+    pred_df = concat([test_df, pred_df], axis=1)
+    print(list(pred_df.columns))
+    pred_df = pred_df[['Item_Id', 'Low_Cap_Price']]
+    pred_file = f'Result {datetime.now().strftime("%Y%m%d %H%M")} MAE {val_mae}.csv'
+    pred_df.to_csv(pred_file, index=False)
+    return
+
+
 def main():
     print('get data')
     base_path = r'C:\Users\akshitagarwal\Desktop\Keras\datasets\prices'
@@ -251,13 +263,18 @@ def main():
     print(Y_train.shape)
     regressor = get_model(44, 1, magic='relu')
     print(regressor.summary())
-    history = fit_and_evaluate(regressor, x_train, y_train, 25, 64, x_test, y_test)
+    history = fit_and_evaluate(regressor, x_train, y_train, 200, 3, x_test, y_test)
     real_test_data = np.array(test_df)
 
     # plt_plot_losses(history)
     # plt_plot_mse(history)
 
     predictions = regressor.predict(real_test_data)
+    hist = history.history
+    print(hist.keys())
+    val_mae = int(hist['val_mae'][-1])
+    write_results(predictions, str(val_mae), os.path.join(base_path, 'Test.csv'))
+
     print('done')
 
 
