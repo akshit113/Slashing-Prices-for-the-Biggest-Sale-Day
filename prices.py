@@ -8,6 +8,7 @@ from keras import Sequential
 from keras.layers import Dense
 from keras.losses import MeanSquaredLogarithmicError
 from pandas import get_dummies, concat, read_csv, DataFrame, set_option
+from sklearn.metrics import mean_squared_log_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
@@ -133,7 +134,40 @@ def get_model(input_size, output_size, magic='relu'):
     # Setting optimizer
     msle = MeanSquaredLogarithmicError()
     # mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
+    mlmodel.compile(optimizer='adam', loss='mean_squared_error', metrics=['mae'])
+    return mlmodel
+
+
+def get_baseline_model(input_size, output_size, magic='relu', optimizer='adam', loss='mean_squared_error',
+                       metrics='mae'):
+    """This function creates a baseline feedforward neural network with of given input size and output size
+        using magic activation function.
+    :param input_size: number of columns in x_train
+    :param output_size: no of columns in one hpt
+    :param magic: activation function
+    :type optimizer: model optimizer
+    :param metrics: metric
+    :param loss: loss function
+    :return:Sequential model
+    """
+    mlmodel = Sequential()
+    mlmodel.add(Dense(18, input_dim=input_size, activation=magic))
+    # mlmodel.add(LeakyReLU(alpha=0.1))
+    mlmodel.add(Dense(128, activation=magic))
+    mlmodel.add(Dense(128, activation=magic))
+    mlmodel.add(Dense(256, activation=magic))
+    mlmodel.add(Dense(256, activation=magic))
+    mlmodel.add(Dense(512, activation=magic))
+    mlmodel.add(Dense(512, activation=magic))
+    mlmodel.add(Dense(1024, activation=magic))
+    mlmodel.add(Dense(output_size))
+
+    # Setting optimizer
+
+    msle = MeanSquaredLogarithmicError()
     mlmodel.compile(optimizer='rmsprop', loss='mean_squared_error', metrics=['mae'])
+    # mlmodel.compile(loss=msle, optimizer='adam', metrics=['mean_squared_error'])
+    # mlmodel.compile(optimizer=optimizer, loss=loss, metrics=[metrics])
     return mlmodel
 
 
@@ -169,7 +203,7 @@ def plt_plot_mse(history):
     :return: displays the plot
     """
     print(history.history.keys)
-    losses = ['mean_squared_error', 'val_mean_squared_error']
+    losses = ['mae', 'val_mae']
     for loss in losses:
         print(loss)
         plt.plot(history.history[loss])
@@ -259,10 +293,10 @@ def add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df, tar
     return train_df, test_df
 
 
-def write_results(preds, val_mae, fpath):
+def write_results(preds, val_msle, fpath):
     """Writes the model predictions into a .csv file in a suitable format
-    :param preds: np array of model preditcions
-    :param val_mae: validation mean absolute error
+    :param preds: np array of model predictions
+    :param val_msle: validation mean mean squared logarithmic error
     :param fpath: location of the test file
     :return:
     """
@@ -273,9 +307,17 @@ def write_results(preds, val_mae, fpath):
     pred_df = concat([test_df, pred_df], axis=1)
     print(list(pred_df.columns))
     pred_df = pred_df[['Item_Id', 'Low_Cap_Price']]
-    pred_file = f'Result {datetime.now().strftime("%Y%m%d %H%M")} MAE {val_mae}.csv'
+    pred_file = f'Result {datetime.now().strftime("%Y%m%d %H%M")} MSLE {val_msle}.csv'
+    print(pred_file)
     pred_df.to_csv(pred_file, index=False)
     return
+
+
+def calc_accuracy_on_validation_data(preds, fpath):
+    val_labels_df = read_csv(fpath)
+    val_labels = np.array(val_labels_df)
+    msle = round((mean_squared_log_error(val_labels, preds) * 100), 2)
+    return msle
 
 
 def main():
@@ -290,23 +332,25 @@ def main():
                                                                                    target_col='Low_Cap_Price')
     train_df, test_df = add_missing_cols(cols_not_in_train, train_df, cols_not_in_test, test_df,
                                          target_col='Low_Cap_Price')
-    x_train, x_test, y_train, y_test = split_dataset(train_df, test_size=0.20, seed=42)
+    print(train_df.columns)
+    print(test_df.shape)
+    x_train, x_test, y_train, y_test = split_dataset(train_df, test_size=0.2, seed=42)
     X_train, Y_train = np.array(x_train), np.array(y_train)
-    print(X_train.shape)
-    print(Y_train.shape)
-    regressor = get_model(44, 1, magic='relu')
+
+    regressor = get_model(43, 1, magic='relu')
+    # regressor = get_baseline_model(43, 1, magic='relu', optimizer='rmsprop', loss=MeanSquaredLogarithmicError(),
+    #                                metrics='msle')
     print(regressor.summary())
-    history = fit_and_evaluate(regressor, x_train, y_train, 200, 3, x_test, y_test)
+    history = fit_and_evaluate(regressor, X_train, Y_train, 25, 40, x_test, y_test)
     real_test_data = np.array(test_df)
 
-    # plt_plot_losses(history)
-    # plt_plot_mse(history)
+    plt_plot_losses(history)
+    plt_plot_mse(history)
 
     predictions = regressor.predict(real_test_data)
-    hist = history.history
-    print(hist.keys())
-    val_mae = int(hist['val_mae'][-1])
-    write_results(predictions, str(val_mae), os.path.join(base_path, 'Test.csv'))
+    msle = round(history.history['val_mae'][-1], 2)
+    # msle = calc_accuracy_on_validation_data(predictions, os.path.join(base_path, 'ValidationLabels.csv'))
+    write_results(predictions, str(msle), os.path.join(base_path, 'Test.csv'))
 
     print('done')
 
